@@ -1,4 +1,5 @@
 from googleapiclient.discovery import build
+import os 
 import json
 import pandas as pd
 import numpy as np
@@ -6,8 +7,11 @@ from IPython.display import JSON
 import warnings
 warnings.filterwarnings("ignore")
 
-##List of Youtube Channels
 
+# Fetch API key from GitHub Secret
+API_KEY = os.environ.get("YOUTUBE_API_KEY")
+
+##List of Youtube Channels
 
 channel_ids=["UCY4rE2X-n2-TM_4K65CfXew","UCFuxLOUo41P3eEAW8U-Dwjg",
 "UCDRA2X1Tp2idmQZ4-EASDEA","UCiw4XPoqiJ4XVSUYOk0k7xQ",
@@ -23,7 +27,7 @@ api_service_name = "youtube"
 api_version = "v3"
 client_secrets_file = "YOUR_CLIENT_SECRET_FILE.json"
 
-youtube = build(api_service_name, api_version, developerKey=api_key)
+youtube = build(api_service_name, api_version, developerKey=API_KEY)
 
 ##get_channel_stats() 
 
