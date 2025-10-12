@@ -6,13 +6,29 @@ import numpy as np
 from IPython.display import JSON
 import warnings
 warnings.filterwarnings("ignore")
-
-
+import os
+import pandas as pd
+from sqlalchemy import create_engine
+#--------------------------------------------------------------------------
+# Fetch sensitive info from GitHub Secrets via environment variables
+#--------------------------------------------------------------------------
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_HOST = os.environ.get("DB_HOST")
+DB_NAME = os.environ.get("DB_NAME")
+#--------------------------------------------------------------------------
+# Create SQLAlchemy engine
+#---------------------------------------------------------------------------
+engine = create_engine(
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+)
+#----------------------------------------------------------------------------
 # Fetch API key from GitHub Secret
+#----------------------------------------------------------------------------
 API_KEY = os.environ.get("YOUTUBE_API_KEY")
-
+#-----------------------------------------------------------------------------
 ##List of Youtube Channels
-
+#-----------------------------------------------------------------------------
 channel_ids=["UCY4rE2X-n2-TM_4K65CfXew","UCFuxLOUo41P3eEAW8U-Dwjg",
 "UCDRA2X1Tp2idmQZ4-EASDEA","UCiw4XPoqiJ4XVSUYOk0k7xQ",
 "UCuLftLIRZ2hHsDcLjwDo4Iw","UCIKAsBdkwH3ERoJd3hJQ-Jg",
@@ -20,17 +36,17 @@ channel_ids=["UCY4rE2X-n2-TM_4K65CfXew","UCFuxLOUo41P3eEAW8U-Dwjg",
 "UCTP9sDeqayLKuD4QjHKdcIw","UC82KxaZyYynHpX3q1TQi_5g",
 "UCgilhqoyZrXV2EBlaaAtVaw","UCGeGhS_akOxBWQcSmje6B-w",
 "UCD8CFS_nj2_dBdSZu53wCcQ"]
-
+#-------------------------------------------------------------------------------
 ##Fetching Channel Stats with Youtube API
-
+#-------------------------------------------------------------------------------
 api_service_name = "youtube"
 api_version = "v3"
 client_secrets_file = "YOUR_CLIENT_SECRET_FILE.json"
 
 youtube = build(api_service_name, api_version, developerKey=API_KEY)
-
-##get_channel_stats() 
-
+#-------------------------------------------------------------------------------
+## get_channel_stats() 
+#-------------------------------------------------------------------------------
 all_data=[]
 def get_channel_stats(youtube,channel_ids):
     all_data=[]
@@ -51,8 +67,9 @@ def get_channel_stats(youtube,channel_ids):
       all_data.append(data)
 
     return pd.DataFrame(all_data)
-
-##get_video_ids()
+#------------------------------------------------------------------------------------------
+## get_video_ids()
+#------------------------------------------------------------------------------------------
 playlist_ids=channel_data['playlistId'].tolist()
 def get_video_ids(youtube, playlist_ids):
     all_data = []
@@ -84,9 +101,9 @@ def get_video_ids(youtube, playlist_ids):
     return pd.DataFrame(all_data)
   
 video_ids=get_video_ids(youtube,playlist_ids)
-
-##get_video_stats()
-
+#--------------------------------------------------------------------------------------
+## get_video_stats()
+#---------------------------------------------------------------------------------------
 video_id_list=video_ids['video_id'].to_list()
 def get_video_stats(youtube,video_id_list):
     all_data=[]
@@ -114,25 +131,9 @@ def get_video_stats(youtube,video_id_list):
 
     return pd.DataFrame(all_data)
 
-## connecting to database 
-
-import os
-import pandas as pd
-from sqlalchemy import create_engine
-
-# Fetch sensitive info from GitHub Secrets via environment variables
-DB_USER = os.environ.get("DB_USER")
-DB_PASSWORD = os.environ.get("DB_PASSWORD")
-DB_HOST = os.environ.get("DB_HOST")
-DB_NAME = os.environ.get("DB_NAME")
-
-# Create SQLAlchemy engine
-engine = create_engine(
-    f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-)
-
-## Automate Data ETL Process
-
+#--------------------------------------------------------------------------------------
+## Data ETL Process
+#--------------------------------------------------------------------------------------
 import time
 
 while true:
