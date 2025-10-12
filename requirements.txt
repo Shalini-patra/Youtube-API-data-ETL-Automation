@@ -1,0 +1,6 @@
+pandas==2.1.1
+numpy==1.26.2
+sqlalchemy==2.0.43
+psycopg2-binary==2.9.11
+google-api-python-client==2.99.0
+ipython==8.16.2
