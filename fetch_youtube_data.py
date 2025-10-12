@@ -8,7 +8,7 @@ warnings.filterwarnings("ignore")
 
 ##List of Youtube Channels
 
-api_key="AIzaSyDPxXocOlA-fOp7eX2H9R4PxEYTW8VEdMA"
+
 channel_ids=["UCY4rE2X-n2-TM_4K65CfXew","UCFuxLOUo41P3eEAW8U-Dwjg",
 "UCDRA2X1Tp2idmQZ4-EASDEA","UCiw4XPoqiJ4XVSUYOk0k7xQ",
 "UCuLftLIRZ2hHsDcLjwDo4Iw","UCIKAsBdkwH3ERoJd3hJQ-Jg",
@@ -109,6 +109,23 @@ def get_video_stats(youtube,video_id_list):
           all_data.append(data)
 
     return pd.DataFrame(all_data)
+
+## connecting to database 
+
+import os
+import pandas as pd
+from sqlalchemy import create_engine
+
+# Fetch sensitive info from GitHub Secrets via environment variables
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_HOST = os.environ.get("DB_HOST")
+DB_NAME = os.environ.get("DB_NAME")
+
+# Create SQLAlchemy engine
+engine = create_engine(
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+)
 
 ## Automate Data ETL Process
 
