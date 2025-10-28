@@ -161,7 +161,6 @@ while true:
   video_stats['duration_sec']=video_stats['duration'].apply(lambda x: isodate.parse_duration(x).total_seconds())
   video_stats['comment-viewratio']=video_stats['comments']/video_stats['views']*1000
   video_stats['like-viewratio']=video_stats['likes']/video_stats['views']*1000
-  video_stats_dropped = video_stats.drop(columns=['tags'])
   video_stats['publish_time2'] = video_stats['publish_time'].apply(lambda x: x.hour * 3600 + x.minute * 60 + x.second)
   video_stats.to_sql('video_stats', engine, if_exists='replace', index=False)
   channel_data.to_sql('channel_stats', engine, if_exists='replace', index=False)
