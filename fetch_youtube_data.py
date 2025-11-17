@@ -136,7 +136,7 @@ def get_video_stats(youtube,video_id_list):
 #--------------------------------------------------------------------------------------
 import time
 
-while true:
+while True:
   channel_data=get_channel_stats(youtube,channel_ids)
   video_ids=get_video_ids(youtube,playlist_ids)
   video_stats=get_video_stats(youtube,video_id_list)
