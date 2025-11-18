@@ -1,42 +1,40 @@
 from googleapiclient.discovery import build
 import os
-import json
 import pandas as pd
-import numpy as np
 import warnings
+import isodate
+from sqlalchemy import create_engine, text
+from datetime import datetime
+
 warnings.filterwarnings("ignore")
 
-from sqlalchemy import create_engine
-import isodate
+# -------------------------------------------------------------------
+# Logging Helper
+# -------------------------------------------------------------------
+def log(msg):
+    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC] {msg}")
 
-# ------------------------------------------------------------------------------
-# Fetch DB and API credentials
-# ------------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Load Secrets
+# -------------------------------------------------------------------
 DB_USER = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 DB_HOST = os.environ.get("DB_HOST")
 DB_NAME = os.environ.get("DB_NAME")
-
 API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
-# ------------------------------------------------------------------------------
-# SQLAlchemy engine
-# ------------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# DB Connection
+# -------------------------------------------------------------------
 engine = create_engine(
     f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
 )
 
-# ------------------------------------------------------------------------------
-# YouTube API setup
-# ------------------------------------------------------------------------------
-api_service_name = "youtube"
-api_version = "v3"
+# -------------------------------------------------------------------
+# YouTube API
+# -------------------------------------------------------------------
+youtube = build("youtube", "v3", developerKey=API_KEY)
 
-youtube = build(api_service_name, api_version, developerKey=API_KEY)
-
-# ------------------------------------------------------------------------------
-# Channel IDs
-# ------------------------------------------------------------------------------
 channel_ids = [
     "UCY4rE2X-n2-TM_4K65CfXew","UCFuxLOUo41P3eEAW8U-Dwjg",
     "UCDRA2X1Tp2idmQZ4-EASDEA","UCiw4XPoqiJ4XVSUYOk0k7xQ",
@@ -47,20 +45,20 @@ channel_ids = [
     "UCD8CFS_nj2_dBdSZu53wCcQ"
 ]
 
-# ------------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Fetch channel stats
-# ------------------------------------------------------------------------------
-def get_channel_stats(youtube, channel_ids):
-    all_data = []
-
+# -------------------------------------------------------------------
+def get_channel_stats():
+    log("Fetching channel stats...")
     request = youtube.channels().list(
-        part="snippet,contentDetails,statistics,status",
+        part="snippet,contentDetails,statistics",
         id=",".join(channel_ids)
     )
     response = request.execute()
 
+    rows = []
     for item in response["items"]:
-        data = {
+        rows.append({
             "channel_title": item["snippet"]["title"],
             "published_date": item["snippet"]["publishedAt"],
             "country": item["snippet"].get("country"),
@@ -68,15 +66,18 @@ def get_channel_stats(youtube, channel_ids):
             "views": item["statistics"]["viewCount"],
             "totalVideos": item["statistics"]["videoCount"],
             "playlistId": item["contentDetails"]["relatedPlaylists"]["uploads"]
-        }
-        all_data.append(data)
+        })
 
-    return pd.DataFrame(all_data)
+    df = pd.DataFrame(rows)
+    log(f"Fetched {len(df)} channels.")
+    return df
 
-# ------------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Fetch video IDs
-# ------------------------------------------------------------------------------
-def get_video_ids(youtube, playlist_ids):
+# -------------------------------------------------------------------
+def get_video_ids(playlist_ids):
+    log("Fetching video IDs...")
+
     all_data = []
 
     for pid in playlist_ids:
@@ -84,7 +85,7 @@ def get_video_ids(youtube, playlist_ids):
 
         while True:
             request = youtube.playlistItems().list(
-                part="contentDetails,snippet",
+                part="contentDetails",
                 playlistId=pid,
                 maxResults=50,
                 pageToken=next_page_token
@@ -92,36 +93,35 @@ def get_video_ids(youtube, playlist_ids):
             response = request.execute()
 
             for item in response["items"]:
-                data = {
-                    "channelId": item["snippet"]["channelId"],
-                    "playlistId": item["snippet"]["playlistId"],
-                    "video_id": item["contentDetails"]["videoId"]
-                }
-                all_data.append(data)
+                all_data.append(item["contentDetails"]["videoId"])
 
             next_page_token = response.get("nextPageToken")
             if not next_page_token:
                 break
 
-    return pd.DataFrame(all_data)
+    log(f"Total video IDs fetched: {len(all_data)}")
+    return list(set(all_data))  # remove duplicates
 
-# ------------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Fetch video stats
-# ------------------------------------------------------------------------------
-def get_video_stats(youtube, video_id_list):
+# -------------------------------------------------------------------
+def get_video_stats(video_ids):
+    log(f"Fetching video stats for {len(video_ids)} videos...")
+
     all_data = []
 
-    for i in range(0, len(video_id_list), 50):
+    for i in range(0, len(video_ids), 50):
+        chunk = video_ids[i:i+50]
         request = youtube.videos().list(
             part="snippet,contentDetails,statistics",
-            id=",".join(video_id_list[i:i + 50])
+            id=",".join(chunk)
         )
         response = request.execute()
 
         for item in response["items"]:
-            data = {
-                "channel": item["snippet"].get("channelTitle"),
+            all_data.append({
                 "videoId": item["id"],
+                "channel": item["snippet"].get("channelTitle"),
                 "video_title": item["snippet"].get("title"),
                 "description": item["snippet"].get("description"),
                 "tags": item["snippet"].get("tags"),
@@ -130,51 +130,71 @@ def get_video_stats(youtube, video_id_list):
                 "views": item["statistics"].get("viewCount"),
                 "comments": item["statistics"].get("commentCount"),
                 "favourites": item["statistics"].get("favoriteCount"),
-                "duration": item["contentDetails"].get("duration"),
-            }
-            all_data.append(data)
+                "duration": item["contentDetails"].get("duration")
+            })
 
-    return pd.DataFrame(all_data)
+    df = pd.DataFrame(all_data)
+    log(f"Fetched stats for {len(df)} videos.")
+    return df
 
-# ------------------------------------------------------------------------------
-# ETL Workflow (runs ONCE per GitHub Action run)
-# ------------------------------------------------------------------------------
-channel_data = get_channel_stats(youtube, channel_ids)
+# -------------------------------------------------------------------
+# Main ETL
+# -------------------------------------------------------------------
+log("ETL job started.")
 
-playlist_ids = channel_data["playlistId"].tolist()
-video_ids = get_video_ids(youtube, playlist_ids)
+# 1. Channel stats (always replace)
+channel_data = get_channel_stats()
 
-video_id_list = video_ids["video_id"].tolist()
-video_stats = get_video_stats(youtube, video_id_list)
+# 2. Video IDs
+video_ids = get_video_ids(channel_data["playlistId"].tolist())
 
-# --- Transformations ---
-channel_data["subscribers"] = channel_data["subscribers"].astype(int)
-channel_data["views"] = channel_data["views"].astype(int)
-channel_data["totalVideos"] = channel_data["totalVideos"].astype(int)
-channel_data["channel_published"] = pd.to_datetime(channel_data["published_date"]).dt.date
+# 3. Remove video IDs already in DB (incremental)
+log("Checking for new videos (incremental filtering)...")
 
-video_stats["views"] = video_stats["views"].astype(int)
-video_stats["likes"] = video_stats["likes"].fillna(0).astype(int)
-video_stats["comments"] = video_stats["comments"].fillna(0).astype(int)
-video_stats["favourites"] = video_stats["favourites"].fillna(0).astype(int)
+with engine.connect() as conn:
+    existing = pd.read_sql("SELECT videoId FROM video_stats", conn) \
+               if engine.dialect.has_table(conn, "video_stats") else pd.DataFrame()
 
-video_stats["tag_count"] = video_stats["tags"].apply(lambda x: len(x) if x else 0)
-video_stats["description_length"] = video_stats["description"].apply(lambda x: len(x) if x else 0)
+existing_ids = set(existing["videoId"]) if not existing.empty else set()
 
-video_stats["publishedAt"] = pd.to_datetime(video_stats["publishedAt"], errors="coerce")
-video_stats["publish_year"] = video_stats["publishedAt"].dt.year
-video_stats["publish_time"] = video_stats["publishedAt"].dt.time
-video_stats["published_dayofweek"] = video_stats["publishedAt"].dt.day_name()
-video_stats["duration_sec"] = video_stats["duration"].apply(lambda x: isodate.parse_duration(x).total_seconds())
+new_video_ids = [vid for vid in video_ids if vid not in existing_ids]
 
-# ratios
-video_stats["comment_view_ratio"] = video_stats["comments"] / video_stats["views"] * 1000
-video_stats["like_view_ratio"] = video_stats["likes"] / video_stats["views"] * 1000
+log(f"New videos found: {len(new_video_ids)}")
 
-# ------------------------------------------------------------------------------
-# Load into PostgreSQL
-# ------------------------------------------------------------------------------
-video_stats.to_sql("video_stats", engine, if_exists="replace", index=False)
+if len(new_video_ids) == 0:
+    log("No new videos. ETL finished.")
+else:
+    # 4. Fetch stats for NEW videos only
+    video_stats = get_video_stats(new_video_ids)
+
+    # --- Transformations ---
+    video_stats["views"] = video_stats["views"].astype(int)
+    video_stats["likes"] = video_stats["likes"].fillna(0).astype(int)
+    video_stats["comments"] = video_stats["comments"].fillna(0).astype(int)
+    video_stats["favourites"] = video_stats["favourites"].fillna(0).astype(int)
+
+    video_stats["tag_count"] = video_stats["tags"].apply(lambda x: len(x) if x else 0)
+    video_stats["description_length"] = video_stats["description"].apply(lambda x: len(x) if x else 0)
+
+    video_stats["publishedAt"] = pd.to_datetime(video_stats["publishedAt"], errors="coerce")
+    video_stats["publish_year"] = video_stats["publishedAt"].dt.year
+    video_stats["publish_time"] = video_stats["publishedAt"].dt.time
+    video_stats["published_dayofweek"] = video_stats["publishedAt"].dt.day_name()
+
+    video_stats["duration_sec"] = video_stats["duration"].apply(
+        lambda x: isodate.parse_duration(x).total_seconds()
+    )
+
+    # ratios
+    video_stats["comment_view_ratio"] = video_stats["comments"] / video_stats["views"] * 1000
+    video_stats["like_view_ratio"] = video_stats["likes"] / video_stats["views"] * 1000
+
+    # 5. Upload to DB
+    log("Uploading new video stats...")
+    video_stats.to_sql("video_stats", engine, if_exists="append", index=False)
+
+# channel_stats: always replace
+log("Updating channel_stats...")
 channel_data.to_sql("channel_stats", engine, if_exists="replace", index=False)
 
-print("ETL Updated Successfully!")
+log("ETL completed successfully!")
