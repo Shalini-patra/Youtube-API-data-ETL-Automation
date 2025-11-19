@@ -152,7 +152,7 @@ video_ids = get_video_ids(channel_data["playlistId"].tolist())
 log("Checking for new videos (incremental filtering)...")
 
 with engine.connect() as conn:
-    existing = pd.read_sql("SELECT videoId FROM video_stats", conn) \
+    existing = pd.read_sql("SELECT videoid FROM video_stats", conn) \
                if engine.dialect.has_table(conn, "video_stats") else pd.DataFrame()
 
 existing_ids = set(existing["videoId"]) if not existing.empty else set()
